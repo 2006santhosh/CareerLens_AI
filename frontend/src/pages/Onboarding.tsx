@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type Career } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,8 @@ export default function Onboarding() {
   const [error, setError] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [resumeMessage, setResumeMessage] = useState<string | null>(null);
+  // Canonical skill names (loaded lazily when Step 3 is first shown)
+  const [canonicalSkills, setCanonicalSkills] = useState<string[] | null>(null);
 
   const [targetCareerId, setTargetCareerId] = useState('');
   const [weeklyHours, setWeeklyHours] = useState('5-10');
@@ -34,6 +36,26 @@ export default function Onboarding() {
   function toggleInterest(name: string) {
     setInterests((cur) => (cur.includes(name) ? cur.filter((i) => i !== name) : [...cur, name]));
   }
+
+  // Load canonical skill names the first time Step 3 is shown
+  useEffect(() => {
+    if (step === 3 && canonicalSkills === null) {
+      api.get<{ name: string }[]>('/skills')
+        .then((data) => setCanonicalSkills(data.map((s) => s.name.toLowerCase())))
+        .catch(() => setCanonicalSkills([])); // fail silently — warning simply won't show
+    }
+  }, [step, canonicalSkills]);
+
+  // Compute which entered skill names are not in the canonical list
+  const unrecognisedSkills = useMemo(() => {
+    if (!canonicalSkills) return [];
+    return skillsText
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((entry) => entry.split(':')[0].trim())
+      .filter((name) => name && !canonicalSkills.includes(name.toLowerCase()));
+  }, [skillsText, canonicalSkills]);
 
   function parseSkills() {
     return skillsText
@@ -150,6 +172,16 @@ export default function Onboarding() {
               className="focus-ring w-full rounded-lg border border-[var(--line)] px-3 py-2 text-sm"
               placeholder="Python:60, Git:50, Docker:20"
             />
+            <p className="mt-1 text-xs text-[var(--slate)]">
+              Use canonical skill names (e.g. Python, Docker, React). Aliases like K8s, Postgres, NLP also work.
+              Unrecognised names are ignored.
+            </p>
+            {unrecognisedSkills.length > 0 && (
+              <p className="mt-2 rounded-lg border border-[var(--amber)] bg-[var(--amber)]/10 px-3 py-2 text-xs text-[var(--ink-text)]">
+                <span className="font-medium">Not recognised (will be ignored):</span>{' '}
+                {unrecognisedSkills.join(', ')}
+              </p>
+            )}
           </div>
         )}
 

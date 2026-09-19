@@ -36,8 +36,8 @@ export default function Assessments() {
             </div>
             <Link
               to={`/assessments/${a.id}`}
-              className="focus-ring rounded-full px-4 py-1.5 text-sm font-medium text-white"
-              style={{ background: 'var(--ink)' }}
+              className="focus-ring rounded-full px-4 py-1.5 text-sm font-medium"
+              style={{ background: 'var(--ink)', color: 'white' }}
             >
               {a.attempts > 0 ? 'Retake' : 'Start'}
             </Link>
