@@ -31,9 +31,11 @@ export function AppShell() {
       >
         <div>
           <div className="mb-8 flex items-center gap-2 px-2">
-            <span className="font-mono text-lg font-semibold tracking-tight" style={{ color: 'var(--amber)' }}>
-              ◈
-            </span>
+            <img
+              src="/careerlens-logo.png"
+              alt="CareerLens AI"
+              className="h-7 w-7 rounded object-contain"
+            />
             <span className="font-display text-lg text-white">CareerLens AI</span>
           </div>
           <nav className="flex flex-col gap-0.5">
