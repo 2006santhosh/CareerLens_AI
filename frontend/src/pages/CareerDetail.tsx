@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, type CareerDetail as CareerDetailType, ApiError } from '../lib/api';
 import { LoadingState, ErrorState } from '../components/States';
 import { ImportanceTag } from '../components/SkillBits';
+import { CareerGraph } from '../components/CareerGraph';
 
 export default function CareerDetail() {
   const { id } = useParams();
@@ -59,6 +60,11 @@ export default function CareerDetail() {
           </ul>
         </section>
       )}
+
+      <section className="mb-8">
+        <h2 className="font-display mb-3 text-lg">Skill Dependency Graph</h2>
+        <CareerGraph careerId={career.id} />
+      </section>
 
       <section className="mb-8">
         <h2 className="font-display mb-3 text-lg">Required skills</h2>

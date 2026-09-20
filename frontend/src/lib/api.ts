@@ -92,6 +92,9 @@ export interface SkillProfileItem {
   has_github_evidence: boolean;
   has_certification: boolean;
   best_assessment_percent?: number;
+  has_practical_evidence?: boolean;
+  best_practical_score?: number;
+  latest_evidence_excerpt?: string;
 }
 
 export interface Career {
@@ -262,4 +265,36 @@ export interface JobDescriptionMatchOut {
   match_percent: number;
   matched_skills: string[];
   missing_skills: string[];
+  career_id?: string;
+}
+
+export interface PracticalAssessmentOut {
+  id: string;
+  skill: Skill;
+  title: string;
+  description: string;
+  validation_type: string;
+}
+
+export interface PracticalAssessmentResult {
+  score: number;
+  passed: boolean;
+  previous_skill_level: number;
+  updated_skill_level: number;
+  new_status: string;
+  feedback: { check: string; status: string }[];
+  roadmap_updated: boolean;
+}
+
+export interface SimulatorSkillOverride {
+  skill_id: string;
+  level?: number;
+  status?: string;
+  has_project_evidence?: boolean;
+  has_github_evidence?: boolean;
+}
+
+export interface SimulatorResponse {
+  readiness: Readiness;
+  gap_analysis: GapAnalysis;
 }

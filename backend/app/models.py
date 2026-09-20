@@ -201,6 +201,8 @@ class StudentProgress(Base, TimestampMixin):
     has_github_evidence: Mapped[bool] = mapped_column(Boolean, default=False)
     has_certification: Mapped[bool] = mapped_column(Boolean, default=False)
     best_assessment_percent: Mapped[float] = mapped_column(Float, nullable=True)
+    has_practical_evidence: Mapped[bool] = mapped_column(Boolean, default=False)
+    best_practical_score: Mapped[float] = mapped_column(Float, nullable=True)
 
     __table_args__ = (UniqueConstraint("user_id", "skill_id", name="uq_user_skill"),)
     skill: Mapped["Skill"] = relationship()
@@ -217,3 +219,26 @@ class ReadinessSnapshot(Base, TimestampMixin):
     assessment_performance: Mapped[float] = mapped_column(Float)
     skill_coverage: Mapped[float] = mapped_column(Float)
     verification: Mapped[float] = mapped_column(Float)
+
+
+class PracticalAssessment(Base, TimestampMixin):
+    __tablename__ = "practical_assessments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skills.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    validation_type: Mapped[str] = mapped_column(String(50))  # e.g., "docker_containerize"
+
+    skill: Mapped["Skill"] = relationship()
+
+
+class PracticalSubmission(Base, TimestampMixin):
+    __tablename__ = "practical_submissions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_id)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    assessment_id: Mapped[str] = mapped_column(String(36), ForeignKey("practical_assessments.id"), index=True)
+    score: Mapped[float] = mapped_column(Float)
+    passed: Mapped[bool] = mapped_column(Boolean)
+    feedback: Mapped[str] = mapped_column(Text, nullable=True)  # JSON feedback breakdown
+    previous_skill_level: Mapped[int] = mapped_column(Integer)
+    updated_skill_level: Mapped[int] = mapped_column(Integer)

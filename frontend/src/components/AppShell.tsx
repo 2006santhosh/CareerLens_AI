@@ -12,10 +12,12 @@ const NAV_ITEMS = [
   { to: '/skills', label: 'Skill Intelligence', icon: Sparkles },
   { to: '/careers', label: 'Career Explorer', icon: Compass },
   { to: '/gap-analysis', label: 'Skill Gap Analysis', icon: Target },
+  { to: '/simulator', label: 'Career Simulator', icon: Sparkles },
   { to: '/roadmap', label: 'Learning Roadmap', icon: Map },
   { to: '/assessments', label: 'Assessments', icon: ClipboardList },
   { to: '/evidence', label: 'Projects / Evidence', icon: FolderGit2 },
   { to: '/analytics', label: 'Progress Analytics', icon: BarChart3 },
+  { to: '/job-matcher', label: 'Job Description Matcher', icon: ClipboardList },
   { to: '/placement', label: 'Placement Insights', icon: Users },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];

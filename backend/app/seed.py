@@ -847,15 +847,19 @@ def seed():
             career_objs = {c.name: c for c in db.query(models.Career).all()}
 
         # --- Learning resources ---
+        res_added = 0
         for skill_name, title, rtype, hours, url in RESOURCES:
             skill = skill_objs.get(skill_name)
             if not skill:
                 continue
-            db.add(models.LearningResource(
-                skill_id=skill.id, title=title, type=rtype, difficulty="Intermediate",
-                estimated_hours=hours, url=url, description=f"Curated resource for {skill_name}.", is_demo=False,
-            ))
-        print(f"Seeded {len(RESOURCES)} learning resources.")
+            exists = db.query(models.LearningResource).filter_by(url=url).first()
+            if not exists:
+                db.add(models.LearningResource(
+                    skill_id=skill.id, title=title, type=rtype, difficulty="Intermediate",
+                    estimated_hours=hours, url=url, description=f"Curated resource for {skill_name}.", is_demo=False,
+                ))
+                res_added += 1
+        print(f"Seeded {res_added} learning resources.")
 
         # --- Assessments ---
         assessment_count, question_count = 0, 0
@@ -863,77 +867,107 @@ def seed():
             skill = skill_objs.get(skill_name)
             if not skill:
                 continue
-            assessment = models.Assessment(
-                skill_id=skill.id, title=f"{skill_name} Fundamentals Assessment",
-                description=f"A {len(questions)}-question check of your {skill_name} fundamentals.",
-                type="MCQ",
-            )
-            db.add(assessment)
-            db.flush()
-            for prompt, options, correct_idx, explanation in questions:
-                db.add(models.AssessmentQuestion(
-                    assessment_id=assessment.id, prompt=prompt, options=options,
-                    correct_index=correct_idx, explanation=explanation,
-                ))
-                question_count += 1
-            assessment_count += 1
+            assessment_title = f"{skill_name} Fundamentals Assessment"
+            assessment = db.query(models.Assessment).filter_by(skill_id=skill.id, title=assessment_title).first()
+            if not assessment:
+                assessment = models.Assessment(
+                    skill_id=skill.id, title=assessment_title,
+                    description=f"A {len(questions)}-question check of your {skill_name} fundamentals.",
+                    type="MCQ",
+                )
+                db.add(assessment)
+                db.flush()
+                for prompt, options, correct_idx, explanation in questions:
+                    db.add(models.AssessmentQuestion(
+                        assessment_id=assessment.id, prompt=prompt, options=options,
+                        correct_index=correct_idx, explanation=explanation,
+                    ))
+                    question_count += 1
+                assessment_count += 1
         print(f"Seeded {assessment_count} assessments with {question_count} questions.")
+
+        # --- Practical Assessments ---
+        docker_skill = skill_objs.get("Docker")
+        if docker_skill:
+            practical = db.query(models.PracticalAssessment).filter_by(skill_id=docker_skill.id).first()
+            if not practical:
+                practical = models.PracticalAssessment(
+                    skill_id=docker_skill.id,
+                    title="Dockerize a Web App",
+                    description="Containerize a provided Flask application. You must write a Dockerfile that sets a base image, copies files, exposes the correct port, and defines a startup command.",
+                    validation_type="docker_containerize",
+                )
+                db.add(practical)
+                print("Seeded Practical Assessment for Docker.")
 
         db.commit()
 
         # --- Demo student ---
-        demo_user = models.User(
-            full_name="Aditi Sharma", email=DEMO_EMAIL, password_hash=hash_password(DEMO_PASSWORD),
-            college="National Institute of Technology", degree="B.Tech", department="Computer Science",
-            graduation_year=2026, onboarding_complete=True,
-        )
-        db.add(demo_user)
-        db.flush()
+        demo_user = db.query(models.User).filter_by(email=DEMO_EMAIL).first()
+        if not demo_user:
+            demo_user = models.User(
+                full_name="Aditi Sharma", email=DEMO_EMAIL, password_hash=hash_password(DEMO_PASSWORD),
+                college="National Institute of Technology", degree="B.Tech", department="Computer Science",
+                graduation_year=2026, onboarding_complete=True,
+            )
+            db.add(demo_user)
+            db.flush()
+            print("Created demo user.")
+        else:
+            print("Demo user already exists, reusing.")
 
         devops_career = career_objs["DevOps Engineer"]
-        profile = models.StudentProfile(
-            user_id=demo_user.id, target_career_id=devops_career.id, weekly_hours="5-10",
-            preferred_learning_style="Mixed", career_interests="DevOps Engineer,Cloud Engineer",
-            github_username="octocat",
-        )
-        db.add(profile)
+        profile = db.query(models.StudentProfile).filter_by(user_id=demo_user.id).first()
+        if not profile:
+            profile = models.StudentProfile(
+                user_id=demo_user.id, target_career_id=devops_career.id, weekly_hours="5-10",
+                preferred_learning_style="Mixed", career_interests="DevOps Engineer,Cloud Engineer",
+                github_username="octocat",
+            )
+            db.add(profile)
 
         for skill_name, level in DEMO_SKILLS.items():
             skill = skill_objs.get(skill_name)
             if not skill:
                 continue
-            status = "self_reported"
-            has_resume = level >= 40
-            has_project = level >= 55
-            if level >= 70:
-                status = "verified"
-            elif level >= 40:
-                status = "evidence_found"
-            progress = models.StudentProgress(
-                user_id=demo_user.id, skill_id=skill.id, level=level, status=status,
-                has_resume_evidence=has_resume, has_project_evidence=has_project,
-            )
-            db.add(progress)
+            progress = db.query(models.StudentProgress).filter_by(user_id=demo_user.id, skill_id=skill.id).first()
+            if not progress:
+                status = "self_reported"
+                has_resume = level >= 40
+                has_project = level >= 55
+                if level >= 70:
+                    status = "verified"
+                elif level >= 40:
+                    status = "evidence_found"
+                progress = models.StudentProgress(
+                    user_id=demo_user.id, skill_id=skill.id, level=level, status=status,
+                    has_resume_evidence=has_resume, has_project_evidence=has_project,
+                )
+                db.add(progress)
 
-        demo_evidence = models.Evidence(
-            user_id=demo_user.id, type="resume", title="Resume: Aditi_Sharma_Resume.pdf",
-            description="Seed demo resume evidence.", source_filename="Aditi_Sharma_Resume.pdf",
-        )
-        db.add(demo_evidence)
+        demo_evidence = db.query(models.Evidence).filter_by(user_id=demo_user.id, title="Resume: Aditi_Sharma_Resume.pdf").first()
+        if not demo_evidence:
+            demo_evidence = models.Evidence(
+                user_id=demo_user.id, type="resume", title="Resume: Aditi_Sharma_Resume.pdf",
+                description="Seed demo resume evidence.", source_filename="Aditi_Sharma_Resume.pdf",
+            )
+            db.add(demo_evidence)
 
         db.commit()
 
         # Historical readiness snapshots so the analytics trend chart has data
-        base_time = datetime.utcnow() - timedelta(days=20)
-        for i, val in enumerate([42.0, 48.5, 55.0, 61.5]):
-            snap = models.ReadinessSnapshot(
-                user_id=demo_user.id, career_id=devops_career.id, overall_readiness=val,
-                technical_skills=val + 5, project_evidence=val - 8, assessment_performance=val - 3,
-                skill_coverage=val + 2, verification=val - 15,
-            )
-            db.add(snap)
-            snap.created_at = base_time + timedelta(days=i * 5)
-        db.commit()
+        existing_snaps = db.query(models.ReadinessSnapshot).filter_by(user_id=demo_user.id).count()
+        if existing_snaps == 0:
+            base_time = datetime.utcnow() - timedelta(days=20)
+            for i, val in enumerate([42.0, 48.5, 55.0, 61.5]):
+                snap = models.ReadinessSnapshot(
+                    user_id=demo_user.id, career_id=devops_career.id, overall_readiness=val,
+                    technical_skills=val + 5, project_evidence=val - 8, assessment_performance=val - 3,
+                    skill_coverage=val + 2, verification=val - 15,
+                )
+                db.add(snap)
+                snap.created_at = base_time + timedelta(days=i * 5)
+            db.commit()
 
         print(f"Seeded demo student: {DEMO_EMAIL} / {DEMO_PASSWORD}")
         print("Seeding complete.")

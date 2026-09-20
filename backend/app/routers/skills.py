@@ -33,6 +33,13 @@ def skill_profile(current_user: models.User = Depends(auth.get_current_user), db
     )
     result = []
     for progress, skill in rows:
+        latest_ev = (
+            db.query(models.EvidenceSkill)
+            .join(models.Evidence, models.Evidence.id == models.EvidenceSkill.evidence_id)
+            .filter(models.Evidence.user_id == current_user.id, models.EvidenceSkill.skill_id == skill.id)
+            .order_by(models.Evidence.created_at.desc())
+            .first()
+        )
         result.append(
             schemas.SkillProfileItem(
                 skill=schemas.SkillOut.model_validate(skill),
@@ -44,6 +51,9 @@ def skill_profile(current_user: models.User = Depends(auth.get_current_user), db
                 has_github_evidence=progress.has_github_evidence,
                 has_certification=progress.has_certification,
                 best_assessment_percent=progress.best_assessment_percent,
+                has_practical_evidence=getattr(progress, 'has_practical_evidence', False),
+                best_practical_score=getattr(progress, 'best_practical_score', None),
+                latest_evidence_excerpt=latest_ev.excerpt if latest_ev else None,
             )
         )
     return result

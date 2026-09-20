@@ -21,7 +21,7 @@ WEIGHTS = {
 }
 
 
-def compute_readiness(db: Session, user_id: str, career_id: str) -> dict:
+def compute_readiness(db: Session, user_id: str, career_id: str, save_snapshot: bool = True) -> dict:
     analysis = run_gap_analysis(db, user_id, career_id)
     career_skill_ids = [g["skill"].id for g in analysis["gaps"]]
 
@@ -70,7 +70,29 @@ def compute_readiness(db: Session, user_id: str, career_id: str) -> dict:
         1,
     )
 
+    highest = max([
+        ("technical skills", technical_skills),
+        ("project evidence", project_evidence),
+        ("assessment performance", assessment_performance),
+        ("verified skills", verification)
+    ], key=lambda x: x[1])
+
+    lowest = min([
+        ("technical skills", technical_skills),
+        ("project evidence", project_evidence),
+        ("assessment performance", assessment_performance),
+        ("verified skills", verification)
+    ], key=lambda x: x[1])
+
+    if overall < 30:
+        summary = f"Your readiness is low. While your {highest[0]} is your strongest area ({highest[1]}%), you lack {lowest[0]} ({lowest[1]}%)."
+    elif overall < 70:
+        summary = f"You are on the right track! Your {highest[0]} is solid ({highest[1]}%), but you lack {lowest[0]} ({lowest[1]}%). Focus on improving that to increase your readiness."
+    else:
+        summary = f"You are highly ready! You have strong {highest[0]} ({highest[1]}%). To reach 100%, continue polishing your {lowest[0]}."
+
     explanation = {
+        "summary": summary,
         "technical_skills": f"Average of your current skill levels relative to each required "
                              f"level for {analysis['career'].name} (weight {int(WEIGHTS['technical_skills']*100)}%).",
         "project_evidence": f"Share of required skills backed by at least one project "
@@ -93,17 +115,18 @@ def compute_readiness(db: Session, user_id: str, career_id: str) -> dict:
         "explanation": explanation,
     }
 
-    snapshot = models.ReadinessSnapshot(
-        user_id=user_id,
-        career_id=career_id,
-        overall_readiness=overall,
-        technical_skills=technical_skills,
-        project_evidence=project_evidence,
-        assessment_performance=assessment_performance,
-        skill_coverage=skill_coverage,
-        verification=verification,
-    )
-    db.add(snapshot)
-    db.commit()
+    if save_snapshot:
+        snapshot = models.ReadinessSnapshot(
+            user_id=user_id,
+            career_id=career_id,
+            overall_readiness=overall,
+            technical_skills=technical_skills,
+            project_evidence=project_evidence,
+            assessment_performance=assessment_performance,
+            skill_coverage=skill_coverage,
+            verification=verification,
+        )
+        db.add(snapshot)
+        db.commit()
 
     return result

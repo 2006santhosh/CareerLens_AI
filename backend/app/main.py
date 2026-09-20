@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 
 from .database import Base, engine
 from .config import settings
-from .routers import auth, profile, skills, careers, evidence, gap, roadmap, assessments, dashboard
+from .routers import auth, profile, skills, careers, evidence, gap, roadmap, assessments, dashboard, simulator
 
 Base.metadata.create_all(bind=engine)
 
@@ -27,6 +27,7 @@ app.include_router(gap.router)
 app.include_router(roadmap.router)
 app.include_router(assessments.router)
 app.include_router(dashboard.router)
+app.include_router(simulator.router)
 
 
 @app.get("/api/health")

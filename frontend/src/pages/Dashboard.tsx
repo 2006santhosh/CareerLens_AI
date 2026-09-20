@@ -130,6 +130,11 @@ export default function Dashboard() {
           {data.readiness && (
             <section>
               <h2 className="font-display mb-3 text-lg">Readiness breakdown</h2>
+              {data.readiness.explanation.summary && (
+                <div className="mb-4 rounded-lg border border-[var(--teal)] bg-[var(--teal)]/10 p-4 text-sm text-[var(--teal-dark)]">
+                  {data.readiness.explanation.summary}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {(
                   [

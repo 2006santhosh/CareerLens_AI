@@ -64,3 +64,30 @@ def get_career(
         skills=skills_out,
         match_percent=_match_percent(db, current_user.id, career_id),
     )
+
+
+@router.get("/{career_id}/graph")
+def get_career_graph(career_id: str, db: Session = Depends(get_db)):
+    career_skills = (
+        db.query(models.CareerSkill.skill_id)
+        .filter(models.CareerSkill.career_id == career_id)
+        .all()
+    )
+    skill_ids = [cs.skill_id for cs in career_skills]
+    if not skill_ids:
+        return {"nodes": [], "edges": []}
+
+    skills = db.query(models.Skill).filter(models.Skill.id.in_(skill_ids)).all()
+    
+    nodes = [{"id": s.id, "name": s.name, "category": s.category} for s in skills]
+    
+    deps = (
+        db.query(models.SkillDependency)
+        .filter(models.SkillDependency.skill_id.in_(skill_ids), 
+                models.SkillDependency.prerequisite_skill_id.in_(skill_ids))
+        .all()
+    )
+    
+    edges = [{"source": d.prerequisite_skill_id, "target": d.skill_id} for d in deps]
+    
+    return {"nodes": nodes, "edges": edges}

@@ -37,7 +37,13 @@ def _canonical_skill_names(db: Session) -> list[str]:
 
 
 def _skill_by_name(db: Session, name: str) -> models.Skill | None:
-    return db.query(models.Skill).filter(models.Skill.name.ilike(name)).first()
+    skill = db.query(models.Skill).filter(models.Skill.name.ilike(name)).first()
+    if skill:
+        return skill
+    alias = db.query(models.SkillAlias).filter(models.SkillAlias.alias.ilike(name)).first()
+    if alias:
+        return db.query(models.Skill).filter(models.Skill.id == alias.skill_id).first()
+    return None
 
 
 def _apply_extraction(db: Session, user_id: str, extraction: dict, evidence: models.Evidence) -> None:
@@ -88,7 +94,8 @@ async def upload_resume(
                                                       "Please add your skills manually instead.")
 
     canonical_names = [s[0] for s in db.query(models.Skill.name).all()]
-    extraction = ai_service.extract_resume(text, canonical_names)
+    aliases = [a[0] for a in db.query(models.SkillAlias.alias).all()]
+    extraction = ai_service.extract_resume(text, canonical_names, aliases)
 
     evidence = models.Evidence(
         user_id=current_user.id,
@@ -184,41 +191,94 @@ def delete_evidence(
 # ---------------- GitHub (optional, best-effort) ----------------
 
 @router.post("/github/analyze")
-def analyze_github(username: str, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+async def analyze_github(username: str, current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     try:
         headers = {"Authorization": f"token {settings.github_token}"} if settings.github_token else {}
-        resp = httpx.get(f"https://api.github.com/users/{username}/repos?per_page=20&sort=updated",
-                          headers=headers, timeout=10.0)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="GitHub is unavailable right now. "
-                                                          "You can add project evidence manually instead.")
-        repos = resp.json()
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="GitHub is unavailable right now. "
-                                                      "You can add project evidence manually instead.")
+        headers["Accept"] = "application/vnd.github.v3+json"
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(f"https://api.github.com/users/{username}/repos?per_page=5&sort=updated", headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="GitHub is unavailable right now. You can add project evidence manually instead.")
+            repos = resp.json()
+            
+            skill_evidence: dict[str, list[str]] = {}
+            
+            for repo in repos:
+                repo_name = repo["name"]
+                owner = repo["owner"]["login"]
+                
+                # Check languages/topics
+                lang = repo.get("language")
+                if lang:
+                    skill_evidence.setdefault(lang, []).append(f"Primary language '{lang}' in repository {repo_name}.")
+                for topic in (repo.get("topics", []) or []):
+                    skill_evidence.setdefault(topic, []).append(f"Topic '{topic}' tagged in repository {repo_name}.")
+                    
+                # Check root contents
+                contents_resp = await client.get(f"https://api.github.com/repos/{owner}/{repo_name}/contents", headers=headers)
+                if contents_resp.status_code == 200:
+                    contents = contents_resp.json()
+                    if isinstance(contents, list):
+                        file_names = {item["name"].lower() for item in contents if item["type"] == "file"}
+                        dir_names = {item["name"].lower() for item in contents if item["type"] == "dir"}
+                        
+                        if "dockerfile" in file_names or "docker-compose.yml" in file_names:
+                            skill_evidence.setdefault("Docker", []).append(f"Detected Dockerfile/docker-compose.yml in repository {repo_name}.")
+                        if ".github" in dir_names:
+                            skill_evidence.setdefault("CI/CD", []).append(f"Detected .github workflows in repository {repo_name}.")
+                        if "package.json" in file_names:
+                            skill_evidence.setdefault("JavaScript", []).append(f"Detected package.json in repository {repo_name}.")
+                            skill_evidence.setdefault("Node.js", []).append(f"Detected package.json in repository {repo_name}.")
+                        if "requirements.txt" in file_names or "pyproject.toml" in file_names:
+                            skill_evidence.setdefault("Python", []).append(f"Detected Python dependencies in repository {repo_name}.")
+                            
+                            # For MVP: best-effort content fetch for requirements.txt
+                            if "requirements.txt" in file_names:
+                                req_url = next((i["download_url"] for i in contents if i["name"].lower() == "requirements.txt"), None)
+                                if req_url:
+                                    req_resp = await client.get(req_url)
+                                    if req_resp.status_code == 200:
+                                        req_text = req_resp.text.lower()
+                                        if "fastapi" in req_text:
+                                            skill_evidence.setdefault("FastAPI", []).append(f"Detected FastAPI dependency in {repo_name}/requirements.txt.")
+                                        if "django" in req_text:
+                                            skill_evidence.setdefault("Django", []).append(f"Detected Django dependency in {repo_name}/requirements.txt.")
+                                        if "flask" in req_text:
+                                            skill_evidence.setdefault("Flask", []).append(f"Detected Flask dependency in {repo_name}/requirements.txt.")
+                                        if "pandas" in req_text:
+                                            skill_evidence.setdefault("Pandas", []).append(f"Detected Pandas in {repo_name}/requirements.txt.")
 
-    languages_found = set()
-    for repo in repos:
-        lang = repo.get("language")
-        if lang:
-            languages_found.add(lang)
-        topics = repo.get("topics", []) or []
-        languages_found.update(topics)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="GitHub is unavailable right now. You can add project evidence manually instead.")
 
     canonical_names = [s[0] for s in db.query(models.Skill.name).all()]
-    matched = [n for n in canonical_names if n.lower() in {l.lower() for l in languages_found}]
-
+    matched = []
+    
     evidence = models.Evidence(
         user_id=current_user.id, type="github", title=f"GitHub: {username}",
-        description=f"Public repository analysis (supporting evidence only, does not prove expertise).",
+        description=f"Public repository analysis (supporting evidence only).",
     )
     db.add(evidence)
     db.flush()
-    for name in matched:
-        skill = _skill_by_name(db, name)
+    
+    for raw_skill, reasons in skill_evidence.items():
+        # find matching canonical skill
+        matched_canonical = next((n for n in canonical_names if n.lower() == raw_skill.lower()), None)
+        if not matched_canonical:
+            continue
+            
+        if matched_canonical not in matched:
+            matched.append(matched_canonical)
+            
+        skill = _skill_by_name(db, matched_canonical)
         if not skill:
             continue
-        db.add(models.EvidenceSkill(evidence_id=evidence.id, skill_id=skill.id, confidence=0.5))
+            
+        # Combine reasons
+        combined_reasons = " ".join(set(reasons))
+        db.add(models.EvidenceSkill(evidence_id=evidence.id, skill_id=skill.id, confidence=0.6, excerpt=combined_reasons))
+        
         progress = get_or_create_progress(db, current_user.id, skill.id)
         progress.has_github_evidence = True
         progress.level = max(progress.level, 30)
@@ -239,16 +299,40 @@ def analyze_job_description(
     db: Session = Depends(get_db),
 ):
     canonical_names = [s[0] for s in db.query(models.Skill.name).all()]
-    lower_text = payload.text.lower()
-    required = [n for n in canonical_names if re.search(r"\b" + re.escape(n.lower()) + r"\b", lower_text)]
+    aliases = [a[0] for a in db.query(models.SkillAlias.alias).all()]
+    extracted = ai_service.extract_job_description(payload.text, canonical_names, aliases)
+    
+    required_raw = extracted.get("skills", [])
+    
+    # Map to canonical names
+    required = []
+    for r in required_raw:
+        skill = _skill_by_name(db, r)
+        if skill and skill.name not in required:
+            required.append(skill.name)
+
     if not required:
         raise HTTPException(status_code=422, detail="Could not detect any known skills in this text.")
+
+    # Create a custom career for this JD
+    custom_title = extracted.get("title", "Custom Job Match")
+    career = models.Career(name=f"{custom_title} ({current_user.id[:8]})", description="Dynamically generated from job description.", responsibilities="N/A")
+    db.add(career)
+    db.flush()
+    
+    skill_map = {s.name: s.id for s in db.query(models.Skill).filter(models.Skill.name.in_(required)).all()}
+    
+    for name in required:
+        sid = skill_map.get(name)
+        if sid:
+            db.add(models.CareerSkill(career_id=career.id, skill_id=sid, required_level=70, importance="High", is_required=True))
+
+    db.commit()
 
     progress = {
         p.skill_id: p.level
         for p in db.query(models.StudentProgress).filter(models.StudentProgress.user_id == current_user.id).all()
     }
-    skill_map = {s.name: s.id for s in db.query(models.Skill).filter(models.Skill.name.in_(required)).all()}
 
     matched, missing = [], []
     for name in required:
@@ -257,4 +341,4 @@ def analyze_job_description(
         (matched if level >= 40 else missing).append(name)
 
     match_percent = round((len(matched) / len(required)) * 100, 1) if required else 0.0
-    return schemas.JobDescriptionMatchOut(match_percent=match_percent, matched_skills=matched, missing_skills=missing)
+    return schemas.JobDescriptionMatchOut(match_percent=match_percent, matched_skills=matched, missing_skills=missing, career_id=career.id)

@@ -35,13 +35,28 @@ class AIService:
 
     # ---------------- public API ----------------
 
-    def extract_resume(self, text: str, canonical_skills: list[str]) -> dict:
+    def extract_resume(self, text: str, canonical_skills: list[str], aliases: list[str] = None) -> dict:
         """Extract structured skill/project/cert/education data from resume text."""
+        aliases = aliases or []
         if self.mode == "live" and self.api_key:
-            result = self._call_live_extraction(text, canonical_skills)
+            result = self._call_live_extraction(text, canonical_skills, aliases)
             if result is not None:
                 return {**result, "ai_mode": "live"}
-        return {**self._demo_extraction(text, canonical_skills), "ai_mode": "demo"}
+        return {**self._demo_extraction(text, canonical_skills, aliases), "ai_mode": "demo"}
+
+    def extract_job_description(self, text: str, canonical_skills: list[str], aliases: list[str] = None) -> dict:
+        """Extract job title and required skills from a job description."""
+        aliases = aliases or []
+        if self.mode == "live" and self.api_key:
+            # For hackathon MVP, we will reuse the extraction logic but just expect it to find skills
+            result = self._call_live_extraction(text, canonical_skills, aliases)
+            if result is not None:
+                # Provide a generic title since the prompt didn't ask for it
+                return {"title": "Custom Job Role", "skills": [s["name"] for s in result.get("skills", [])], "ai_mode": "live"}
+        
+        # Demo fallback
+        extracted = self._demo_extraction(text, canonical_skills, aliases)
+        return {"title": "Custom Job Role", "skills": [s["name"] for s in extracted.get("skills", [])], "ai_mode": "demo"}
 
     def explain_gap(self, skill_name: str, required: int, current: int,
                      importance: str, is_prereq_for: list[str]) -> str:
@@ -68,7 +83,7 @@ class AIService:
 
     # ---------------- live provider ----------------
 
-    def _call_live_extraction(self, text: str, canonical_skills: list[str]) -> Optional[dict]:
+    def _call_live_extraction(self, text: str, canonical_skills: list[str], aliases: list[str]) -> Optional[dict]:
         try:
             skill_list_str = ", ".join(canonical_skills)
             user_prompt = (
@@ -100,7 +115,7 @@ class AIService:
             # Validate minimal schema shape before trusting it
             if "skills" not in parsed or not isinstance(parsed["skills"], list):
                 return None
-            valid_names = {s.lower() for s in canonical_skills}
+            valid_names = {s.lower() for s in canonical_skills + aliases}
             parsed["skills"] = [
                 s for s in parsed["skills"]
                 if isinstance(s, dict) and s.get("name", "").lower() in valid_names
@@ -115,12 +130,12 @@ class AIService:
 
     # ---------------- demo / deterministic fallback ----------------
 
-    def _demo_extraction(self, text: str, canonical_skills: list[str]) -> dict:
+    def _demo_extraction(self, text: str, canonical_skills: list[str], aliases: list[str]) -> dict:
         """Deterministic keyword-matching extraction used for the hackathon demo
         and as a safety net when the live AI API is unavailable."""
         lower_text = text.lower()
         found = []
-        for skill in canonical_skills:
+        for skill in canonical_skills + aliases:
             pattern = r"\b" + re.escape(skill.lower()) + r"\b"
             matches = list(re.finditer(pattern, lower_text))
             if matches:

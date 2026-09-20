@@ -70,3 +70,46 @@ def submit(
             roadmap_updated = True
 
     return schemas.AssessmentResultOut(**result, roadmap_updated=roadmap_updated)
+
+
+@router.get("/practical/list", response_model=list[schemas.PracticalAssessmentOut])
+def list_practical_assessments(db: Session = Depends(get_db)):
+    assessments = db.query(models.PracticalAssessment).all()
+    return assessments
+
+
+@router.get("/practical/{assessment_id}", response_model=schemas.PracticalAssessmentOut)
+def get_practical_assessment(assessment_id: str, db: Session = Depends(get_db)):
+    a = db.query(models.PracticalAssessment).filter(models.PracticalAssessment.id == assessment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Practical assessment not found")
+    return a
+
+
+@router.post("/practical/{assessment_id}/submit", response_model=schemas.PracticalAssessmentResultOut)
+def submit_practical(
+    assessment_id: str,
+    payload: schemas.PracticalSubmissionCreate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    from ..engines.practical_engine import submit_practical_assessment
+    import json
+    
+    assessment = db.query(models.PracticalAssessment).filter(models.PracticalAssessment.id == assessment_id).first()
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Practical assessment not found")
+
+    submission, roadmap_updated = submit_practical_assessment(
+        db, current_user.id, assessment, payload.files or {}
+    )
+
+    return schemas.PracticalAssessmentResultOut(
+        score=submission.score,
+        passed=submission.passed,
+        previous_skill_level=submission.previous_skill_level,
+        updated_skill_level=submission.updated_skill_level,
+        new_status="verified" if submission.passed else "assessed",
+        feedback=json.loads(submission.feedback) if submission.feedback else [],
+        roadmap_updated=roadmap_updated
+    )

@@ -91,6 +91,9 @@ class SkillProfileItem(BaseModel):
     has_github_evidence: bool
     has_certification: bool
     best_assessment_percent: Optional[float] = None
+    has_practical_evidence: bool
+    best_practical_score: Optional[float] = None
+    latest_evidence_excerpt: Optional[str] = None
 
 
 # ---------- Careers ----------
@@ -304,3 +307,48 @@ class JobDescriptionMatchOut(BaseModel):
     match_percent: float
     matched_skills: list[str]
     missing_skills: list[str]
+    career_id: Optional[str] = None
+
+class SimulatorSkillOverride(BaseModel):
+    skill_id: str
+    level: Optional[int] = None
+    status: Optional[str] = None
+    has_project_evidence: Optional[bool] = None
+    has_github_evidence: Optional[bool] = None
+
+class SimulatorRequest(BaseModel):
+    career_id: str
+    overrides: list[SimulatorSkillOverride]
+
+class SimulatorResponse(BaseModel):
+    readiness: ReadinessOut
+    gap_analysis: GapAnalysisOut
+
+
+# ---------- Practical Assessments ----------
+class PracticalAssessmentOut(BaseModel):
+    id: str
+    skill: SkillOut
+    title: str
+    description: str
+    validation_type: str
+
+    class Config:
+        from_attributes = True
+
+
+class PracticalSubmissionCreate(BaseModel):
+    # Depending on how the frontend sends files or github links.
+    # We will simulate the upload by expecting a repository URL or just a mock payload for the hackathon MVP.
+    repository_url: Optional[str] = None
+    files: Optional[dict[str, str]] = None  # filename -> file content
+
+
+class PracticalAssessmentResultOut(BaseModel):
+    score: float
+    passed: bool
+    previous_skill_level: int
+    updated_skill_level: int
+    new_status: str
+    feedback: list[dict[str, str]]  # list of {"check": "Dockerfile exists", "status": "pass"}
+    roadmap_updated: bool

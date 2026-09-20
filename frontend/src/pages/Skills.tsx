@@ -56,10 +56,16 @@ export default function Skills() {
                     {item.has_project_evidence && <EvidenceTag label="Project" />}
                     {item.has_github_evidence && <EvidenceTag label="GitHub" />}
                     {item.has_certification && <EvidenceTag label="Certification" />}
+                    {item.has_practical_evidence && <EvidenceTag label="Practical" />}
                     {item.best_assessment_percent != null && (
                       <EvidenceTag label={`Assessment ${Math.round(item.best_assessment_percent)}%`} />
                     )}
                   </div>
+                  {item.latest_evidence_excerpt && (
+                    <div className="mt-3 text-xs italic text-[var(--slate)] border-l-2 border-[var(--teal)] pl-2">
+                      "{item.latest_evidence_excerpt}"
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
