@@ -3,60 +3,108 @@ const TOKEN_KEY = 'careerlens_token';
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
+
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
 }
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
 class ApiError extends Error {
   status: number;
+
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
   }
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
-  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
+  };
+
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+    ...options,
+    headers,
+  });
+
   if (res.status === 401) {
     clearToken();
+
     if (!path.includes('/auth/')) {
       window.location.href = '/login';
     }
   }
+
   if (!res.ok) {
     let detail = 'Something went wrong. Please try again.';
+
     try {
       const data = await res.json();
-      detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+      detail =
+        typeof data.detail === 'string'
+          ? data.detail
+          : JSON.stringify(data.detail);
     } catch {
       /* ignore parse errors */
     }
+
     throw new ApiError(detail, res.status);
   }
-  if (res.status === 204) return undefined as T;
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json();
 }
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
+
   post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+    request<T>(path, {
+      method: 'POST',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
+
   put: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+    request<T>(path, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-  upload: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form }),
+    request<T>(path, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  del: <T>(path: string) =>
+    request<T>(path, {
+      method: 'DELETE',
+    }),
+
+  upload: <T>(path: string, form: FormData) =>
+    request<T>(path, {
+      method: 'POST',
+      body: form,
+    }),
 };
 
 export { ApiError };
@@ -239,9 +287,17 @@ export interface ProfileOut {
 
 export interface AnalyticsOut {
   readiness_trend: { date: string; overall_readiness: number }[];
-  category_distribution: { category: string; average_level: number; skill_count: number }[];
+  category_distribution: {
+    category: string;
+    average_level: number;
+    skill_count: number;
+  }[];
   verified_vs_unverified: Record<string, number>;
-  assessment_scores: { skill: string; percent: number; date: string }[];
+  assessment_scores: {
+    skill: string;
+    percent: number;
+    date: string;
+  }[];
   top_remaining_gaps: string[];
 }
 
